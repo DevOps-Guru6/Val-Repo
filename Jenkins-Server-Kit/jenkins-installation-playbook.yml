@@ -1,0 +1,168 @@
+- name: Install Java JDK 17
+  hosts: Jenkins
+  become: true
+  tasks:
+    - name: Update Package Repo (Ubuntu)
+      command: "apt-get update"
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+
+    - name: Update Package Repo (RedHat)
+      command: "yum update"
+      when: ansible_os_family == 'RedHat' or ansible_distribution == 'CentOS'
+
+    - name: Update Package Repo (Windows)
+      command: "choco upgrade"
+      when: ansible_os_family == 'Windows'
+
+    - name: Update Package Repo (MacOS)
+      command: "brew update"
+      when: ansible_system == 'Darwin'
+
+    - name: Install Java Open JDK 17 (Ubuntu)
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      package: 
+        name: openjdk-17-jdk
+        state: present 
+
+    - name: Install Java Open JDK 17 (RedHat)
+      when: ansible_os_family == 'RedHat' or ansible_distribution == 'CentOS'
+      package: 
+        name: java-17-openjdk-devel
+        state: present 
+
+    - name: Install Java Open JDK 17 (Windows)
+      when: ansible_os_family == 'Windows'
+      package: 
+        name: openjdk17
+        state: present
+
+    - name: Install Java Open JDK 17 (MacOS)
+      when: ansible_system == 'Darwin'
+      package: 
+        name: openjdk@17
+        state: present
+---
+- name: Install Jenkins (Ubuntu)
+  hosts: jenkins
+  become: yes
+  vars:
+    jenkins_apt_key_url: "https://pkg.jenkins.io/debian/jenkins.io.key"
+    jenkins_apt_repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+  tasks:
+    - name: Add Jenkins APT repository key
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      apt_key:
+        url: "{{ jenkins_apt_key_url }}"
+        state: present
+
+    - name: Add Jenkins APT repository
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      apt_repository:
+        repo: "{{ jenkins_apt_repo }}"
+        state: present
+
+    - name: Update APT package cache
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      apt:
+        update_cache: yes
+
+    - name: Install Jenkins package
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      apt:
+        name: jenkins
+        state: present
+
+    - name: Start Jenkins service and enable it on boot
+      when: ansible_os_family == 'Debian' or ansible_distribution == 'Ubuntu'
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+---
+- name: Install Jenkins (RedHat)
+  hosts: jenkins
+  become: yes
+  vars:
+    jenkins_yum_repo: "https://pkg.jenkins.io/redhat-stable/jenkins.repo"
+    jenkins_yum_repo_key: "https://pkg.jenkins.io/redhat-stable/jenkins.io.key"
+  tasks:
+    - name: Add Jenkins YUM repository
+      when: ansible_os_family == 'RedHat' or ansible_distribution == 'CentOS'
+      yum_repository:
+        name: jenkins
+        baseurl: "{{ jenkins_yum_repo }}"
+        gpgkey: "{{ jenkins_yum_repo_key }}"
+        state: present
+
+    - name: Install Jenkins package
+      when: ansible_os_family == 'RedHat' or ansible_distribution == 'CentOS'
+      yum:
+        name: jenkins
+        state: present
+
+    - name: Start Jenkins service and enable it on boot
+      when: ansible_os_family == 'RedHat' or ansible_distribution == 'CentOS'
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+---
+- name: Install Jenkins (Windows)
+  hosts: jenkins
+  become: yes
+  vars:
+    jenkins_windows_url: "https://updates.jenkins.io/download/war/latest/jenkins.war"
+    jenkins_home: "C:\\jenkins"
+  tasks:
+    - name: Create Jenkins home directory
+      when: ansible_os_family == 'Windows'
+      win_file:
+        path: "{{ jenkins_home }}"
+        state: directory
+
+    - name: Download Jenkins WAR file
+      when: ansible_os_family == 'Windows'
+      win_get_url:
+        url: "{{ jenkins_windows_url }}"
+        dest: "{{ jenkins_home }}\\jenkins.war"
+
+    - name: Install Jenkins as a service
+      when: ansible_os_family == 'Windows'
+      win_service:
+        name: Jenkins
+        binary_path_name: "{{ jenkins_home }}\\jenkins.war --httpPort=8080"
+        state: present
+        start_mode: delayed
+---
+- name: Install Jenkins (macOS)
+  hosts: jenkins
+  become: yes
+  vars:
+    jenkins_home: "/Users/Shared/Jenkins"
+    jenkins_url: "https://updates.jenkins.io/download/war/latest/jenkins.war"
+  tasks:
+    - name: Create Jenkins home directory
+      when: ansible_system == 'Darwin'
+      file:
+        path: "{{ jenkins_home }}"
+        state: directory
+        mode: "0755"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Download Jenkins WAR file
+      when: ansible_system == 'Darwin'
+      get_url:
+        url: "{{ jenkins_url }}"
+        dest: "{{ jenkins_home }}/jenkins.war"
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Start Jenkins
+      when: ansible_system == 'Darwin'
+      command: java -jar "{{ jenkins_home }}/jenkins.war --httpPort=8080" creates="{{ jenkins_home }}/jenkins.pid"
+      async: 600
+      poll: 0
+      become: false
+      ignore_errors: yes
